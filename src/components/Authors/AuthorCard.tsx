@@ -12,6 +12,7 @@ import {
 } from "@chakra-ui/react";
 import { useNavigate } from "react-router-dom";
 import { Author } from "../Books.type";
+import { useAuthorStore } from "../../stores/authorStore";
 
 interface AuthorCardProps {
   author: Author;
@@ -20,20 +21,37 @@ interface AuthorCardProps {
 
 const AuthorCard: React.FC<AuthorCardProps> = ({ author, onAuthorClick }) => {
   const navigate = useNavigate();
+  const { getImageFromCache, cacheImage } = useAuthorStore();
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  const imageUrl = useMemo(() => {
+  const imageId = useMemo(() => {
     if (Array.isArray(author.photos) && author.photos.length > 0) {
-      const photoId = author.photos[0];
-      return `https://covers.openlibrary.org/a/id/${photoId}-L.jpg`;
+      return `photo-${author.photos[0]}`;
     } else if (author.key) {
-      const olid = author.key.replace("/authors/", "");
-      return `https://covers.openlibrary.org/a/olid/${olid}-L.jpg`;
+      return `author-${author.key}`;
     }
     return "";
   }, [author.photos, author.key]);
+
+  const imageUrl = useMemo(() => {
+    const cached = getImageFromCache(imageId);
+    if (cached) return cached;
+
+    let url = "";
+    if (Array.isArray(author.photos) && author.photos.length > 0) {
+      url = `https://covers.openlibrary.org/a/id/${author.photos[0]}-L.jpg`;
+    } else if (author.key) {
+      const olid = author.key.replace("/authors/", "");
+      url = `https://covers.openlibrary.org/a/olid/${olid}-L.jpg`;
+    }
+    
+    if (url) {
+      cacheImage(imageId, url);
+    }
+    return url;
+  }, [author.photos, author.key, imageId, getImageFromCache, cacheImage]);
 
   const displayBio = useMemo(() => {
     if (typeof author.bio === "string") {

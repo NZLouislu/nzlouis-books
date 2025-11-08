@@ -13,6 +13,7 @@
 /dataconnect
 /dataconnect-generated
 /.idx
+/tasks
 
 # misc
 .DS_Store

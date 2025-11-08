@@ -1,37 +1,64 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { Box, Divider, Heading, Image, Text, Skeleton, SkeletonText } from "@chakra-ui/react";
 import { Link } from "react-router-dom";
 import { useOpenLibraryService } from "../../hooks/useOpenLibraryService";
+import { useBookStore } from "../../stores/bookStore";
 
 export interface BookCardProps {
   bookId: string;
 }
 
 export const BookCard: React.FC<BookCardProps> = ({ bookId }) => {
-  const { book, isLoading, error, getBookDetails } = useOpenLibraryService();
+  const { book: apiBook, isLoading: apiLoading, error, getBookDetails: fetchBookDetails } = useOpenLibraryService();
+  const { setBookDetails, getBookDetails: getCachedBookDetails, cacheImage, getImageFromCache } = useBookStore();
   const [imageSrc, setImageSrc] = useState<string>("");
+  const [imageLoaded, setImageLoaded] = useState(false);
 
+  const bookKey = useMemo(() => bookId.replace("/works/", ""), [bookId]);
+  
+  // Try to get book details from cache
+  const cachedBook = useMemo(() => getCachedBookDetails(bookKey), [bookKey, getCachedBookDetails]);
+  const book = cachedBook || apiBook;
+  const isLoading = !cachedBook && apiLoading;
+
+  // Fetch book details if not in cache
   useEffect(() => {
-    if (bookId) {
-      const bookKey = bookId.replace("/works/", "");
-      getBookDetails(bookKey);
+    if (bookId && !cachedBook) {
+      fetchBookDetails(bookKey);
     }
-  }, [bookId, getBookDetails]);
+  }, [bookId, bookKey, cachedBook, fetchBookDetails]);
 
+  // Cache book details fetched from API
+  useEffect(() => {
+    if (apiBook && !cachedBook) {
+      setBookDetails(bookKey, { ...apiBook, id: bookKey });
+    }
+  }, [apiBook, bookKey, cachedBook, setBookDetails]);
+
+  // Load image (prioritize cache)
   useEffect(() => {
     const loadImage = async () => {
       if (book?.covers && book.covers.length > 0) {
-        setImageSrc(
-          `https://covers.openlibrary.org/b/id/${book.covers[0]}-M.jpg`
-        );
+        const coverId = book.covers[0].toString();
+        const cached = getImageFromCache(coverId);
+        
+        if (cached) {
+          setImageSrc(cached);
+          setImageLoaded(true);
+        } else {
+          const url = `https://covers.openlibrary.org/b/id/${book.covers[0]}-M.jpg`;
+          setImageSrc(url);
+          cacheImage(coverId, url);
+          setImageLoaded(true);
+        }
       } else {
         try {
-          const defaultImage = (await import(`../../images/default.jpg`))
-            .default;
+          const defaultImage = (await import(`../../images/default.jpg`)).default;
           setImageSrc(defaultImage);
+          setImageLoaded(true);
         } catch {
-          console.error("Failed to load default image");
           setImageSrc("");
+          setImageLoaded(true);
         }
       }
     };
@@ -39,9 +66,9 @@ export const BookCard: React.FC<BookCardProps> = ({ bookId }) => {
     if (book) {
       loadImage();
     }
-  }, [book]);
+  }, [book, getImageFromCache, cacheImage]);
 
-  if (isLoading) {
+  if (isLoading || !imageLoaded) {
     return (
       <Box
         borderWidth="1px"
@@ -95,6 +122,7 @@ export const BookCard: React.FC<BookCardProps> = ({ bookId }) => {
               height="400px"
               width="100%"
               sx={{ objectFit: "contain" }}
+              loading="lazy"
             />
             <Box
               className="description-overlay"
